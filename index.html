@@ -387,6 +387,12 @@ h3{font-size:14px;font-weight:600}
     </div>
     <div id="cat-filter" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
     <div id="lib-list"></div>
+    <!-- Increment settings -->
+    <div id="inc-panel" style="display:none;margin-top:16px">
+      <div style="font-size:13px;font-weight:700;color:var(--cyan);margin-bottom:8px;padding-top:10px;border-top:1px solid var(--border)">Weight Increment per Exercise</div>
+      <p class="dim" style="font-size:11px;margin-bottom:10px">Set how much to add when "Felt easy" is tapped. Leave blank to use the default (1.25kg under 10kg, 2.5kg above).</p>
+      <div id="inc-list"></div>
+    </div>
   </div>
 
   <!-- ── FINISHER tab ── -->
@@ -439,11 +445,25 @@ function beepCount() { playSound(SND_COUNT); }
 function beepGo()    { playSound(SND_GO); }
 function beepStop()  { playSound(SND_STOP); }
 function fanfare() {
-  var seq = [
-    [SND_F1,0],[SND_F2,190],[SND_F3,380],[SND_F4,570],
-    [SND_F5,1100],[SND_F6,1290],[SND_F7,1480],[SND_F8,1670]
-  ];
-  seq.forEach(function(s){ setTimeout(function(){ playSound(s[0]); }, s[1]); });
+  // 3 low-tone beeps on completion
+  function lowBeep() {
+    try {
+      var ctx = new (window.AudioContext || window.webkitAudioContext)();
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.value = 440;
+      gain.gain.setValueAtTime(0.6, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.5);
+    } catch(e) {}
+  }
+  lowBeep();
+  setTimeout(lowBeep, 600);
+  setTimeout(lowBeep, 1200);
 }
 
 // -- DATA ----------------------------------------------------------------------
@@ -959,6 +979,15 @@ function getWts(){ return load('wts',{}); }
 function saveWts(w){ save('wts',w); }
 function getLog(){ return load('log',[]); }
 function saveLog(l){ save('log',l); }
+function getExIncrement(wName,eName){
+  var k='inc_'+wName+'_'+eName;
+  return load(k, null);  // null = use default (1.25 or 2.5)
+}
+function setExIncrement(wName,eName,v){
+  var k='inc_'+wName+'_'+eName;
+  save(k, v);
+}
+
 function getExWt(wName,eName){
   var w=getWts(), k=wName+'|'+eName;
   if(w[k]!==undefined) return w[k];
@@ -1309,10 +1338,11 @@ function tickSet(ei,si){
 function feltEasy(ei){
   var ex=sessionExercises[ei];
   var cur=getExWt(selWorkout,ex.name);
-  var bump=cur<10?1.25:2.5;
+  var customInc=getExIncrement(selWorkout,ex.name);
+  var bump = customInc!==null ? customInc : (cur<10?1.25:2.5);
   var nw=cur+bump;
   setExWt(selWorkout,ex.name,nw);
-  toast(ex.name+' → '+nw+'kg next session');
+  toast(ex.name+' → '+nw+'kg (+'+bump+'kg)');
 }
 function addSet(ei){
   var ex=sessionExercises[ei];
@@ -1999,9 +2029,82 @@ function switchSettingsTab(tab){
     btn.style.background = t===tab?'var(--cyan)':'var(--surface2)';
     btn.style.color = t===tab?'#000':'var(--text)';
   });
-  if(tab==='ex')   renderLibrary();
+  if(tab==='ex')   { renderLibrary(); renderIncSettings(); }
   if(tab==='fin')  renderFinSettings();
   if(tab==='card') renderCardSettings();
+}
+
+// ── Increment Settings ────────────────────────────────────────────────────────
+function renderIncSettings(){
+  // Only show if there's an active workout with exercises
+  var panel = document.getElementById('inc-panel');
+  var list  = document.getElementById('inc-list');
+  if(!panel||!list) return;
+
+  // Build list of all exercises across all workouts (built-in + custom)
+  var custom = getCustomWorkouts();
+  var allWorkouts = {};
+  Object.keys(WORKOUTS).forEach(function(wName){
+    allWorkouts[wName] = WORKOUTS[wName].exercises.map(function(e){return e.name;});
+  });
+  custom.forEach(function(cw){
+    if(cw.exercises && cw.exercises.length>0)
+      allWorkouts[cw.name] = cw.exercises.map(function(e){return e.name;});
+  });
+
+  var keys = Object.keys(allWorkouts);
+  if(keys.length===0){ panel.style.display='none'; return; }
+  panel.style.display='block';
+  list.innerHTML='';
+
+  keys.forEach(function(wName){
+    var exNames = allWorkouts[wName];
+    if(!exNames||exNames.length===0) return;
+
+    // Workout header
+    var wHdr = document.createElement('div');
+    wHdr.style.cssText='font-size:11px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:.4px;padding:8px 0 4px';
+    wHdr.textContent = wName;
+    list.appendChild(wHdr);
+
+    exNames.forEach(function(eName){
+      var row = document.createElement('div');
+      row.style.cssText='display:flex;align-items:center;gap:10px;background:var(--surface);border-radius:10px;padding:10px 14px;margin-bottom:6px';
+
+      var lbl = document.createElement('div');
+      lbl.style.cssText='flex:1;font-size:13px';
+      lbl.textContent = eName;
+
+      var cur = getExWt(wName,eName);
+      var defInc = cur<10?1.25:2.5;
+      var savedInc = getExIncrement(wName,eName);
+
+      var hint = document.createElement('div');
+      hint.style.cssText='font-size:10px;color:var(--dim);margin-top:2px';
+      hint.textContent='default: '+defInc+'kg';
+
+      var nameCol = document.createElement('div');
+      nameCol.style.flex='1';
+      nameCol.appendChild(lbl);
+      nameCol.appendChild(hint);
+
+      var inp = document.createElement('input');
+      inp.type='number'; inp.min='0.25'; inp.step='0.25';
+      inp.placeholder=String(defInc);
+      if(savedInc!==null) inp.value=savedInc;
+      inp.style.cssText='width:70px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;padding:7px 8px;text-align:center;-moz-appearance:textfield';
+      inp.title='kg increment';
+      (function(w,e){ inp.addEventListener('change',function(){
+        var v=parseFloat(this.value);
+        if(isNaN(v)||v<=0){ setExIncrement(w,e,null); this.value=''; toast('Reset to default'); }
+        else { setExIncrement(w,e,v); toast(e+': +'+v+'kg'); }
+      }); })(wName,eName);
+
+      row.appendChild(nameCol);
+      row.appendChild(inp);
+      list.appendChild(row);
+    });
+  });
 }
 
 // ── EXERCISE LIBRARY (browse-only) ───────────────────────────────────────────

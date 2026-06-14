@@ -1570,6 +1570,7 @@ function startTabata(){
   document.getElementById('tab-setup').style.display='none';
   document.getElementById('tab-running').style.display='block';
   document.getElementById('tpause-btn').innerHTML='&#9208;';
+  buildFullPhaseList();
   updTab();
   clearInterval(tabInt);
   tabInt=setInterval(tabTick,1000);
@@ -1658,33 +1659,96 @@ function updTab(){
     tEl.textContent=String(Math.floor(tm/60)).padStart(2,'0')+':'+String(tm%60).padStart(2,'0');
   }
 
-  // Build phase sequence list for current round
-  var list=document.getElementById('tlist');
-  list.innerHTML='';
-  // phases: ready (first only), then for each ex: work, rest (except last ex last round)
-  var phases=[];
-  if(s.round===0 && s.phase==='ready') phases.push({label:'Prepare',type:'ready',exIdx:-1});
-  s.exs.forEach(function(ex,i){
-    phases.push({label:ex.name+(ex.wt>0?' ('+ex.wt+'kg)':''),type:'work',exIdx:i});
-    var isLastEx=i===s.exs.length-1;
-    var isLastRound=s.round===s.rounds-1;
-    if(!(isLastEx&&isLastRound)){
-      if(isLastEx){ phases.push({label:'Round rest',type:'rrest',exIdx:i}); }
-      else { phases.push({label:'Rest',type:'rest',exIdx:i}); }
+  // Update the pre-built phase list — just mark rows done/current
+  updatePhaseListHighlight();
+}
+
+// ── Full phase sequence list (built once at start) ───────────────────────────
+var tabPhaseData = []; // [{label, type, round, exIdx}]
+
+function buildFullPhaseList(){
+  var s = tabState;
+  if(!s) return;
+  tabPhaseData = [];
+  var list = document.getElementById('tlist');
+  list.innerHTML = '';
+
+  // 1. Prepare
+  if(s.startCount > 0){
+    tabPhaseData.push({label:'Prepare', type:'ready', round:0, exIdx:-1});
+  }
+
+  // 2. All rounds
+  for(var r=0; r<s.rounds; r++){
+    // Round header (not for first round)
+    if(r > 0){
+      tabPhaseData.push({label:'— Round '+(r+1)+' —', type:'roundheader', round:r, exIdx:-1});
     }
-  });
-  // Mark done/current
-  phases.forEach(function(ph){
-    var done=false, cur=false;
-    if(ph.type==='ready'){ done=s.phase!=='ready'; cur=s.phase==='ready'; }
-    else if(ph.type==='work'){ done=ph.exIdx<s.exIdx||(ph.exIdx===s.exIdx&&s.phase!=='work'); cur=ph.exIdx===s.exIdx&&s.phase==='work'; }
-    else if(ph.type==='rest'){ done=ph.exIdx<s.exIdx; cur=ph.exIdx===s.exIdx&&s.phase==='rest'; }
-    else if(ph.type==='rrest'){ cur=s.phase==='roundrest'; done=s.phase!=='roundrest'&&s.phase!=='ready'&&s.exIdx===0&&s.round>0; }
-    var row=document.createElement('div');
-    row.className='tab-row'+(cur?' cur':'')+(done?' done':'');
-    row.textContent=(done?'\u2713 ':cur?'\u25b6 ':'  ')+ph.label;
-    if(cur) row.scrollIntoView&&row.scrollIntoView({block:'nearest'});
+    s.exs.forEach(function(ex, i){
+      // Work
+      tabPhaseData.push({label:ex.name+(ex.wt>0?' ('+ex.wt+'kg)':''), type:'work', round:r, exIdx:i});
+      var isLastEx = i===s.exs.length-1;
+      var isLastRound = r===s.rounds-1;
+      // Rest after each exercise (not after the very last one)
+      if(!(isLastEx && isLastRound)){
+        if(isLastEx){
+          tabPhaseData.push({label:'Round Rest', type:'rrest', round:r, exIdx:i});
+        } else {
+          tabPhaseData.push({label:'Rest', type:'rest', round:r, exIdx:i});
+        }
+      }
+    });
+  }
+
+  // 3. Finish
+  tabPhaseData.push({label:'Finish ★', type:'finish', round:-1, exIdx:-1});
+
+  // Render all rows
+  tabPhaseData.forEach(function(ph, idx){
+    var row = document.createElement('div');
+    row.dataset.phaseIdx = idx;
+    if(ph.type === 'roundheader'){
+      row.style.cssText = 'padding:6px 10px;font-size:10px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:.5px;text-align:center';
+    } else {
+      row.className = 'tab-row';
+    }
+    row.textContent = (ph.type!=='roundheader' ? '  ' : '') + ph.label;
     list.appendChild(row);
+  });
+
+  updatePhaseListHighlight();
+}
+
+function updatePhaseListHighlight(){
+  var s = tabState;
+  if(!s) return;
+  var list = document.getElementById('tlist');
+  if(!list) return;
+
+  // Find which phase index is current
+  var curIdx = -1;
+  tabPhaseData.forEach(function(ph, idx){
+    if(ph.type === 'roundheader') return;
+    var isCur = false;
+    if(ph.type==='ready')  isCur = s.phase==='ready';
+    if(ph.type==='work')   isCur = ph.round===s.round && ph.exIdx===s.exIdx && s.phase==='work';
+    if(ph.type==='rest')   isCur = ph.round===s.round && ph.exIdx===s.exIdx && s.phase==='rest';
+    if(ph.type==='rrest')  isCur = ph.round===s.round && s.phase==='roundrest';
+    if(ph.type==='finish') isCur = s.phase==='finish';
+    if(isCur) curIdx = idx;
+  });
+
+  // Determine which rows are done (everything before curIdx, excluding headers)
+  Array.from(list.children).forEach(function(row, idx){
+    var ph = tabPhaseData[idx];
+    if(!ph || ph.type==='roundheader') return;
+    var done = curIdx > -1 && idx < curIdx;
+    var cur  = idx === curIdx;
+    row.className = 'tab-row' + (cur?' cur':'') + (done?' done':'');
+    row.textContent = (done?'✓ ':cur?'▶ ':'  ') + ph.label;
+    if(cur){
+      row.scrollIntoView && row.scrollIntoView({block:'nearest', behavior:'smooth'});
+    }
   });
 }
 

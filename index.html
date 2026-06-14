@@ -380,17 +380,26 @@ h3{font-size:14px;font-weight:600}
 
   <!-- ── EXERCISES tab ── -->
   <div id="spanel-ex">
-    <p class="dim" style="margin-bottom:10px">Browse all 426+ exercises. Use the search or filter by equipment.</p>
-    <div style="position:relative;margin-bottom:10px">
-      <input class="ifield" type="text" id="lib-search" placeholder="Search exercises..." oninput="renderLibrary()" style="padding-left:36px">
-      <svg style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--dim)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <!-- Sub-toggle: Library / Increments -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px">
+      <button id="extab-lib" onclick="switchExTab('lib')" style="padding:8px 4px;border-radius:9px;border:none;font-size:12px;font-weight:700;cursor:pointer;background:var(--cyan);color:#000">&#128218; Library</button>
+      <button id="extab-inc" onclick="switchExTab('inc')" style="padding:8px 4px;border-radius:9px;border:none;font-size:12px;font-weight:700;cursor:pointer;background:var(--surface2);color:var(--text)">&#8679; Increments</button>
     </div>
-    <div id="cat-filter" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
-    <div id="lib-list"></div>
-    <!-- Increment settings -->
-    <div id="inc-panel" style="display:none;margin-top:16px">
-      <div style="font-size:13px;font-weight:700;color:var(--cyan);margin-bottom:8px;padding-top:10px;border-top:1px solid var(--border)">Weight Increment per Exercise</div>
-      <p class="dim" style="font-size:11px;margin-bottom:10px">Set how much to add when "Felt easy" is tapped. Leave blank to use the default (1.25kg under 10kg, 2.5kg above).</p>
+
+    <!-- Library sub-panel -->
+    <div id="expanel-lib">
+      <p class="dim" style="margin-bottom:10px">Browse all 426+ exercises. Use the search or filter by equipment.</p>
+      <div style="position:relative;margin-bottom:10px">
+        <input class="ifield" type="text" id="lib-search" placeholder="Search exercises..." oninput="renderLibrary()" style="padding-left:36px">
+        <svg style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--dim)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </div>
+      <div id="cat-filter" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
+      <div id="lib-list"></div>
+    </div>
+
+    <!-- Increments sub-panel -->
+    <div id="expanel-inc" style="display:none">
+      <p class="dim" style="font-size:12px;margin-bottom:12px">Set how much weight to add when "Felt easy" is tapped. Leave blank to use the smart default (1.25kg under 10kg, 2.5kg above).</p>
       <div id="inc-list"></div>
     </div>
   </div>
@@ -2029,17 +2038,28 @@ function switchSettingsTab(tab){
     btn.style.background = t===tab?'var(--cyan)':'var(--surface2)';
     btn.style.color = t===tab?'#000':'var(--text)';
   });
-  if(tab==='ex')   { renderLibrary(); renderIncSettings(); }
+  if(tab==='ex')   { switchExTab('lib'); }
   if(tab==='fin')  renderFinSettings();
   if(tab==='card') renderCardSettings();
 }
 
+// ── Exercise sub-tab toggle ──────────────────────────────────────────────────
+var exTab = 'lib';
+function switchExTab(tab){
+  exTab = tab;
+  document.getElementById('expanel-lib').style.display = tab==='lib'?'block':'none';
+  document.getElementById('expanel-inc').style.display = tab==='inc'?'block':'none';
+  var lb=document.getElementById('extab-lib'), ib=document.getElementById('extab-inc');
+  if(lb){ lb.style.background=tab==='lib'?'var(--cyan)':'var(--surface2)'; lb.style.color=tab==='lib'?'#000':'var(--text)'; }
+  if(ib){ ib.style.background=tab==='inc'?'var(--cyan)':'var(--surface2)'; ib.style.color=tab==='inc'?'#000':'var(--text)'; }
+  if(tab==='lib') renderLibrary();
+  if(tab==='inc') renderIncSettings();
+}
+
 // ── Increment Settings ────────────────────────────────────────────────────────
 function renderIncSettings(){
-  // Only show if there's an active workout with exercises
-  var panel = document.getElementById('inc-panel');
   var list  = document.getElementById('inc-list');
-  if(!panel||!list) return;
+  if(!list) return;
 
   // Build list of all exercises across all workouts (built-in + custom)
   var custom = getCustomWorkouts();
@@ -2053,9 +2073,8 @@ function renderIncSettings(){
   });
 
   var keys = Object.keys(allWorkouts);
-  if(keys.length===0){ panel.style.display='none'; return; }
-  panel.style.display='block';
   list.innerHTML='';
+  if(keys.length===0){ list.innerHTML='<p class="dim" style="text-align:center;padding:20px 0">No workout exercises found</p>'; return; }
 
   keys.forEach(function(wName){
     var exNames = allWorkouts[wName];

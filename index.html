@@ -150,7 +150,7 @@ h3{font-size:14px;font-weight:600}
 .tab-phase{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-top:5px}
 .tab-exname{font-size:17px;font-weight:700;margin:8px 0 2px;text-align:center;min-height:24px}
 .tab-prog{font-size:12px;color:var(--dim);text-align:center;margin-bottom:8px}
-.tab-list{display:flex;flex-direction:column;gap:5px;max-height:150px;overflow-y:auto;margin:6px 0}
+.tab-list{display:flex;flex-direction:column;gap:4px;height:160px;overflow-y:auto;margin:6px 0;scroll-behavior:smooth;-webkit-overflow-scrolling:touch}
 .tab-row{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface);border-radius:8px;font-size:12px;border:1px solid transparent}
 .tab-row.cur{border-color:var(--cyan);background:rgba(77,217,224,.1);font-weight:600}
 .tab-row.done{opacity:.35}
@@ -1725,7 +1725,7 @@ function updatePhaseListHighlight(){
   var list = document.getElementById('tlist');
   if(!list) return;
 
-  // Find which phase index is current
+  // Find current phase index
   var curIdx = -1;
   tabPhaseData.forEach(function(ph, idx){
     if(ph.type === 'roundheader') return;
@@ -1738,16 +1738,25 @@ function updatePhaseListHighlight(){
     if(isCur) curIdx = idx;
   });
 
-  // Determine which rows are done (everything before curIdx, excluding headers)
+  // Hide done rows, style current and upcoming
   Array.from(list.children).forEach(function(row, idx){
     var ph = tabPhaseData[idx];
-    if(!ph || ph.type==='roundheader') return;
+    if(!ph) return;
+    if(ph.type === 'roundheader'){
+      // Hide round headers that belong to completed rounds
+      var headerDone = curIdx > -1 && idx < curIdx;
+      row.style.display = headerDone ? 'none' : '';
+      return;
+    }
     var done = curIdx > -1 && idx < curIdx;
     var cur  = idx === curIdx;
-    row.className = 'tab-row' + (cur?' cur':'') + (done?' done':'');
-    row.textContent = (done?'✓ ':cur?'▶ ':'  ') + ph.label;
+    // Hide completed rows so they scroll out of view
+    row.style.display = done ? 'none' : '';
+    row.className = 'tab-row' + (cur ? ' cur' : '');
+    row.textContent = (cur ? '\u25b6 ' : '  ') + ph.label;
     if(cur){
-      row.scrollIntoView && row.scrollIntoView({block:'nearest', behavior:'smooth'});
+      // Snap container so current row is at the top
+      list.scrollTop = 0;
     }
   });
 }
